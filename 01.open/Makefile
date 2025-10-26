@@ -5,7 +5,6 @@
 TRG = main
 OBJ = main.o
 SRC = main.cc
-VPATH = /home/miku/learn/Learning_C++
 LLVM = -21
 CONFIG = llvm-config$(LLVM)
 ARCH = $(shell $(CONFIG) --host-target)
@@ -27,30 +26,18 @@ CLANGXX_LINK_FLAGS = -nostdlib++ -lc++
 TIDY_FLAGS = -- --target=$(ARCH) $(CXX_FLAGS) $(CLANGXX_FLAGS) $(DEBUG)
 
 .PHONY : all
-all : template open
-template :
-	$(MAKE) -C 00.template
-open :
-	$(MAKE) -C 01.open
-
+$(TRG) : $(OBJ)
+	$(CXX) $(OBJ) -o $(TRG) $(CLANGXX_LINK_FLAGS)
+	rm -v $(OBJ)
+$(OBJ) : $(SRC)
+	$(CXX) $(SRC) -c $(CXX_FLAGS) $(CLANGXX_FLAGS) $(DEBUG)
 format :
-	$(MAKE) -C 00.template format
-	$(MAKE) -C 01.open format
-
+	$(FORMAT) $(SRC) -style=file -i
 clean :
-	$(MAKE) -C 00.template clean
-	$(MAKE) -C 01.open clean
-
+	rm -v $(TRG)
 scan :
-	$(MAKE) -C 00.template scan
-	$(MAKE) -C 01.open scan
-
+	$(SCAN) make
 tidy :
-	$(MAKE) -C 00.template tidy
-	$(MAKE) -C 01.open tidy
-
-style :
-	clang-format -style=webkit -dump-config > .clang-format
-
-bak :
-	git archive --format=tar.gz --prefix=libcamera/ --output ../libcamera.tar.gz master
+	$(TIDY) $(SRC) $(TIDY_FLAGS)
+check :
+	valgrind --tool=memcheck --leak-check=full --show-reachable=yes --error-limit=no ./$(TRG)
