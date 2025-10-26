@@ -23,14 +23,14 @@ CLANG_FLAGS = -nostdlib
 CLANG_LINK_FLAGS = /usr/lib/llvm$(LLVM)/lib/libllvmlibc.a -static
 CLANGXX_FLAGS = -stdlib=libc++
 CLANGXX_LINK_FLAGS = -nostdlib++ -lc++
-TIDY_FLAGS = -- --target=$(ARCH) $(CXX_FLAGS) $(CLANGXX_FLAGS) $(DEBUG)
+TIDY_FLAGS = -- --target=$(ARCH) $(DEBUG)
 
 .PHONY : all
 $(TRG) : $(OBJ)
-	$(CXX) $(OBJ) -o $(TRG) $(CLANGXX_LINK_FLAGS)
+	$(CXX) $(OBJ) -o $(TRG)
 	rm -v $(OBJ)
 $(OBJ) : $(SRC)
-	$(CXX) $(SRC) -c $(CXX_FLAGS) $(CLANGXX_FLAGS) $(DEBUG)
+	$(CXX) $(SRC) -c $(CXX_FLAGS) $(DEBUG)
 format :
 	$(FORMAT) $(SRC) -style=file -i
 clean :

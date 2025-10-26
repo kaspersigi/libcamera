@@ -2,9 +2,9 @@
 #Makefile for my C++ programs
 ###########################################
 
-TRG = main
-OBJ = main.o
-SRC = main.cc
+TRG = open
+OBJ = open.o ftrace.o
+SRC = open.cc ftrace.cc
 LLVM = -21
 CONFIG = llvm-config$(LLVM)
 ARCH = $(shell $(CONFIG) --host-target)
@@ -17,27 +17,32 @@ C_FLAGS = -std=c23 -Wall -Wno-unused
 CXX_FLAGS = -std=c++26 -Wall -Wno-unused
 DEBUG = -g -O0
 RELEASE = -flto -O3
-LIBS = -lpthread
+LIBS = -lcamera -lcamera-base
 LLVMLIBC = /usr/lib/llvm$(LLVM)/lib/
 CLANG_FLAGS = -nostdlib
 CLANG_LINK_FLAGS = /usr/lib/llvm$(LLVM)/lib/libllvmlibc.a -static
 CLANGXX_FLAGS = -stdlib=libc++
 CLANGXX_LINK_FLAGS = -nostdlib++ -lc++
-TIDY_FLAGS = -- --target=$(ARCH) $(CXX_FLAGS) $(CLANGXX_FLAGS) $(DEBUG)
+TIDY_FLAGS = -- --target=$(ARCH) $(DEBUG)
 
 .PHONY : all
-$(TRG) : $(OBJ)
-	$(CXX) $(OBJ) -o $(TRG) $(CLANGXX_LINK_FLAGS)
-	rm -v $(OBJ)
-$(OBJ) : $(SRC)
-	$(CXX) $(SRC) -c $(CXX_FLAGS) $(CLANGXX_FLAGS) $(DEBUG)
+$(TRG) : open.o ftrace.o
+	$(CXX) open.o ftrace.o -o $(TRG) $(LIBS)
+	rm -v open.o ftrace.o
+open.o : open.cc
+	$(CXX) open.cc -c $(CXX_FLAGS) $(DEBUG) -I/usr/include/libcamera
+ftrace.o : ftrace.cc
+	$(CXX) ftrace.cc -c $(CXX_FLAGS) $(DEBUG)
 format :
-	$(FORMAT) $(SRC) -style=file -i
+	$(FORMAT) open.cc -style=file -i
+	$(FORMAT) ftrace.h -style=file -i
+	$(FORMAT) ftrace.cc -style=file -i
 clean :
 	rm -v $(TRG)
 scan :
 	$(SCAN) make
 tidy :
-	$(TIDY) $(SRC) $(TIDY_FLAGS)
+	$(TIDY) open.cc $(TIDY_FLAGS) -I/usr/include/libcamera
+	$(TIDY) ftrace.cc $(TIDY_FLAGS)
 check :
 	valgrind --tool=memcheck --leak-check=full --show-reachable=yes --error-limit=no ./$(TRG)
