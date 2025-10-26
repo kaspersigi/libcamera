@@ -1,0 +1,12 @@
+# .clangd —— 为你的 Makefile 项目量身定制
+CompileFlags:
+  # 添加编译器标志（从 Makefile 中提取关键项）
+  Add: [
+    -std=c++26,
+    -stdlib=libc++,
+    -Wall,
+    -Wno-unused,
+  ]
+
+  # 指定编译器路径（确保 clangd 使用与你相同的 clang++-21）
+  Compiler: /usr/bin/clang++-21
