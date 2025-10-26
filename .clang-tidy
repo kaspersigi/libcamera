@@ -1,0 +1,12 @@
+# .clang-tidy
+
+Checks: "-*,clang-analyzer-*,bugprone-narrowing-conversions,performance-*,-performance-avoid-endl,-performance-no-int-to-ptr,-bugprone-unsafe-functions,-clang-analyzer-security.insecureAPI.DeprecatedOrUnsafeBufferHandling"
+
+# 关键：只检查路径中不包含 boost/ 或 CL/ 的文件
+HeaderFilterRegex: '^(?!.*(?:boost|CL)/).*$'
+
+# 跟随项目格式
+FormatStyle: file
+
+# 本地开发不把告警当错误
+# WarningsAsErrors: ''
