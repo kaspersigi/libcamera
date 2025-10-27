@@ -4,6 +4,8 @@
 #include <print>
 #include <thread>
 
+// sudo chmod 666 /sys/kernel/debug/tracing/trace_marker
+
 void requestComplete(libcamera::Request* request)
 {
     if (request->status() != libcamera::Request::RequestComplete) {
@@ -13,7 +15,8 @@ void requestComplete(libcamera::Request* request)
 
     const libcamera::ControlList& metadata = request->metadata();
 
-    std::string aeStatus {};
+    // --- AE Status ---
+    std::string aeStatus = "Null";
     if (metadata.contains(libcamera::controls::AeState.id())) {
         auto aeState = metadata.get(libcamera::controls::AeState.id()).get<int32_t>();
         switch (aeState) {
@@ -27,16 +30,71 @@ void requestComplete(libcamera::Request* request)
             aeStatus = "Converged";
             break;
         default:
-            aeStatus = "Null";
+            aeStatus = "Unknown";
         }
     }
 
-    std::string awbStatus {};
-    std::string afStatus {};
-    std::string timestamp {};
-    std::string sequence {};
+    // --- AWB Status (from draft namespace) ---
+    std::string awbStatus = "Null";
+    if (metadata.contains(libcamera::controls::draft::AwbState.id())) {
+        auto awbState = metadata.get(libcamera::controls::draft::AwbState.id()).get<int32_t>();
+        switch (awbState) {
+        case libcamera::controls::draft::AwbStateInactive:
+            awbStatus = "Inactive";
+            break;
+        case libcamera::controls::draft::AwbStateSearching:
+            awbStatus = "Searching";
+            break;
+        case libcamera::controls::draft::AwbConverged:
+            awbStatus = "Converged";
+            break;
+        case libcamera::controls::draft::AwbLocked:
+            awbStatus = "Locked";
+            break;
+        default:
+            awbStatus = "Unknown";
+        }
+    }
 
-    std::println("Frame #{} AeStatus: {} AwbStatus: {} AfbStatus: {} Timestamp: {}", sequence, aeStatus, awbStatus, afStatus, timestamp);
+    // --- AF Status ---
+    std::string afStatus = "Null";
+    if (metadata.contains(libcamera::controls::AfState.id())) {
+        auto afState = metadata.get(libcamera::controls::AfState.id()).get<int32_t>();
+        switch (afState) {
+        case libcamera::controls::AfStateIdle:
+            afStatus = "Idle";
+            break;
+        case libcamera::controls::AfStateScanning:
+            afStatus = "Scanning";
+            break;
+        case libcamera::controls::AfStateFocused:
+            afStatus = "Focused";
+            break;
+        case libcamera::controls::AfStateFailed:
+            afStatus = "Failed";
+            break;
+        default:
+            afStatus = "Unknown";
+        }
+    }
+
+    // --- Timestamp (SENSOR_TIMESTAMP) ---
+    std::string timestamp = "0";
+    if (metadata.contains(libcamera::controls::SensorTimestamp.id())) {
+        auto ts = metadata.get(libcamera::controls::SensorTimestamp.id()).get<int64_t>();
+        timestamp = std::to_string(ts);
+    }
+
+    // --- Frame sequence number ---
+    // Assume single stream; take the first buffer
+    uint32_t sequence = 0;
+    if (!request->buffers().empty()) {
+        auto buffer = request->buffers().begin()->second;
+        sequence = buffer->metadata().sequence;
+    }
+
+    std::println("Frame #{} AeStatus: {} AwbStatus: {} AfStatus: {} Timestamp: {}",
+        sequence, aeStatus, awbStatus, afStatus, timestamp);
 }
 
 auto main(int argc, char* argv[]) -> int
@@ -74,8 +132,10 @@ auto main(int argc, char* argv[]) -> int
         Ftrace::ftrace_duration_end();
     }
 
-    // 3. 配置相机（Still 模式）
-    auto roles = { libcamera::StreamRole::StillCapture };
+    // 3. 配置相机
+    auto roles = { libcamera::StreamRole::Viewfinder };
+    // auto roles = { libcamera::StreamRole::StillCapture };
+
     Ftrace::ftrace_duration_begin("camera generateConfiguration");
     auto config = camera->generateConfiguration(roles);
     if (!config) {
@@ -112,6 +172,9 @@ auto main(int argc, char* argv[]) -> int
         std::println("Successfully allocated buffers");
         Ftrace::ftrace_duration_end();
     }
+    Ftrace::ftrace_duration_begin("allocat FrameBuffer");
+    const std::vector<std::unique_ptr<libcamera::FrameBuffer>>& buffers = allocator->buffers(stream);
+    Ftrace::ftrace_duration_end();
 
     // 5. 注册回调
     Ftrace::ftrace_duration_begin("camera connect");
@@ -131,11 +194,55 @@ auto main(int argc, char* argv[]) -> int
         Ftrace::ftrace_duration_end();
     }
 
-    // 8. 等待完成（实际项目中应使用事件循环）
+    // 7. 创建并提交 Request
+    std::vector<std::unique_ptr<libcamera::Request>> requests;
+    for (int i = 0; i < 30; ++i) {
+        auto request = camera->createRequest();
+        request->addBuffer(stream, buffers[i % buffers.size()].get());
+        requests.push_back(std::move(request));
+    }
+
+    for (auto& request : requests) {
+        camera->queueRequest(request.get());
+    }
+
+#if 0
+    Ftrace::ftrace_duration_begin("camera createRequest");
+    auto request = camera->createRequest();
+    if (!request) {
+        std::println("Failed to create request");
+        Ftrace::ftrace_duration_end();
+        camera->stop();
+        camera->release();
+        return -1;
+    } else {
+        std::println("Successfully created request");
+        Ftrace::ftrace_duration_end();
+    }
+
+    Ftrace::ftrace_duration_begin("request addBuffer");
+    request->addBuffer(stream, buffers[0].get());
+    Ftrace::ftrace_duration_end();
+
+    Ftrace::ftrace_duration_begin("camera queueRequest");
+    ret = camera->queueRequest(request.get());
+    if (ret) {
+        std::println("Failed to queue request");
+        Ftrace::ftrace_duration_end();
+        camera->stop();
+        camera->release();
+        return ret;
+    } else {
+        std::println("Successfully queued request");
+        Ftrace::ftrace_duration_end();
+    }
+#endif
+
     Ftrace::ftrace_duration_begin("sleep");
     std::this_thread::sleep_for(std::chrono::seconds(5));
     Ftrace::ftrace_duration_end();
 
+    // 8. 释放资源
     Ftrace::ftrace_duration_begin("camera stop");
     camera->stop();
     std::println("Successfully stoped camera");
@@ -145,24 +252,6 @@ auto main(int argc, char* argv[]) -> int
     camera->release();
     std::println("Successfully released camera");
     Ftrace::ftrace_duration_end();
-
-#if 0
-        // 7. 创建并提交 Request
-        request_ = camera_->createRequest();
-        if (!request_) {
-            std::cerr << "Failed to create request" << std::endl;
-            return -1;
-        }
-
-        const std::vector<std::unique_ptr<libcamera::FrameBuffer>> &buffers = allocator_->buffers(stream);
-        request_->addBuffer(stream, buffers[0].get());
-
-        ret = camera_->queueRequest(request_.get());
-        if (ret) {
-            std::cerr << "Failed to queue request" << std::endl;
-            return ret;
-        }
-#endif
 
     return 0;
 }
