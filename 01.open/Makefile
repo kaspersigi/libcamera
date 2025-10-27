@@ -17,20 +17,20 @@ C_FLAGS = -std=c23 -Wall -Wno-unused
 CXX_FLAGS = -std=c++26 -Wall -Wno-unused
 DEBUG = -g -O0
 RELEASE = -flto -O3
-LIBS = -lcamera -lcamera-base
+LIBS = -lcamera -lcamera-base -L$(shell uname -m) -lspdlog -lm
 LLVMLIBC = /usr/lib/llvm$(LLVM)/lib/
 CLANG_FLAGS = -nostdlib
 CLANG_LINK_FLAGS = /usr/lib/llvm$(LLVM)/lib/libllvmlibc.a -static
 CLANGXX_FLAGS = -stdlib=libc++
 CLANGXX_LINK_FLAGS = -nostdlib++ -lc++
-TIDY_FLAGS = -- --target=$(ARCH) $(DEBUG)
+TIDY_FLAGS = -- --target=$(ARCH) $(CXX_FLAGS) $(DEBUG)
 
 .PHONY : all
 $(TRG) : open.o ftrace.o
 	$(CXX) open.o ftrace.o -o $(TRG) $(LIBS)
 	rm -v open.o ftrace.o
 open.o : open.cc
-	$(CXX) open.cc -c $(CXX_FLAGS) $(DEBUG) -I/usr/include/libcamera
+	$(CXX) open.cc -c $(CXX_FLAGS) $(DEBUG) -I/usr/include/libcamera -I./inc
 ftrace.o : ftrace.cc
 	$(CXX) ftrace.cc -c $(CXX_FLAGS) $(DEBUG)
 format :
@@ -42,7 +42,7 @@ clean :
 scan :
 	$(SCAN) make
 tidy :
-	$(TIDY) open.cc $(TIDY_FLAGS) -I/usr/include/libcamera
+	$(TIDY) open.cc $(TIDY_FLAGS) -I/usr/include/libcamera -I./inc
 	$(TIDY) ftrace.cc $(TIDY_FLAGS)
 check :
 	valgrind --tool=memcheck --leak-check=full --show-reachable=yes --error-limit=no ./$(TRG)

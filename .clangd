@@ -6,6 +6,7 @@ CompileFlags:
     -stdlib=libc++,
     -Wall,
     -Wno-unused,
+    -I./inc,
     -I/usr/include/libcamera,
   ]
 

@@ -1,15 +1,15 @@
 #include "ftrace.h"
 #include <libcamera/control_ids.h>
 #include <libcamera/libcamera.h>
-#include <print>
+#include <spdlog/spdlog.h>
 #include <thread>
 
 // sudo chmod 666 /sys/kernel/debug/tracing/trace_marker
 
-void requestComplete(libcamera::Request* request)
+auto requestComplete(libcamera::Request* request) -> void
 {
     if (request->status() != libcamera::Request::RequestComplete) {
-        std::println("Request failed!");
+        spdlog::error("Request failed!");
         return;
     }
 
@@ -93,42 +93,42 @@ void requestComplete(libcamera::Request* request)
         sequence = buffer->metadata().sequence;
     }
 
-    std::println("Frame #{} AeStatus: {} AwbStatus: {} AfStatus: {} Timestamp: {}",
-        sequence, aeStatus, awbStatus, afStatus, timestamp);
+    spdlog::info("Frame #{} AeStatus: {} AwbStatus: {} AfStatus: {} Timestamp: {}", sequence, aeStatus, awbStatus, afStatus, timestamp);
 }
 
 auto main(int argc, char* argv[]) -> int
 {
     int ret = -1;
+    spdlog::info("Start!");
 
     // 1. 初始化 CameraManager
     auto cameraManager = std::make_unique<libcamera::CameraManager>();
     Ftrace::ftrace_duration_begin("cameraManager start");
     ret = cameraManager->start();
     if (ret) {
-        std::println("Failed to start CameraManager");
+        spdlog::error("Failed to start CameraManager");
         Ftrace::ftrace_duration_end();
         return ret;
     } else {
-        std::println("Successfully started CameraManager");
+        spdlog::info("Successfully started CameraManager");
         Ftrace::ftrace_duration_end();
     }
 
     // 2. 获取第一个相机
     auto cameras = cameraManager->cameras();
     if (cameras.empty()) {
-        std::println("No cameras found!");
+        spdlog::error("No cameras found!");
         return -1;
     }
     auto& camera = cameras[0];
     Ftrace::ftrace_duration_begin("camera acquire");
     ret = camera->acquire();
     if (ret) {
-        std::println("Failed to acquire camera");
+        spdlog::error("Failed to acquire camera");
         Ftrace::ftrace_duration_end();
         return ret;
     } else {
-        std::println("Successfully acquired camera");
+        spdlog::info("Successfully acquired camera");
         Ftrace::ftrace_duration_end();
     }
 
@@ -139,23 +139,23 @@ auto main(int argc, char* argv[]) -> int
     Ftrace::ftrace_duration_begin("camera generateConfiguration");
     auto config = camera->generateConfiguration(roles);
     if (!config) {
-        std::println("Failed to generate configuration");
+        spdlog::error("Failed to generate configuration");
         Ftrace::ftrace_duration_end();
         camera->release();
         return -1;
     } else {
-        std::println("Successfully generated configuration");
+        spdlog::info("Successfully generated configuration");
         Ftrace::ftrace_duration_end();
     }
     Ftrace::ftrace_duration_begin("camera configure");
     ret = camera->configure(config.get());
     if (ret) {
-        std::println("Failed to configure camera");
+        spdlog::error("Failed to configure camera");
         Ftrace::ftrace_duration_end();
         camera->release();
         return ret;
     } else {
-        std::println("Successfully configured camera");
+        spdlog::info("Successfully configured camera");
         Ftrace::ftrace_duration_end();
     }
 
@@ -165,11 +165,11 @@ auto main(int argc, char* argv[]) -> int
     Ftrace::ftrace_duration_begin("allocate buffers");
     ret = allocator->allocate(stream);
     if (ret < 0) {
-        std::println("Failed to allocate buffers");
+        spdlog::error("Failed to allocate buffers");
         Ftrace::ftrace_duration_end();
         return ret;
     } else {
-        std::println("Successfully allocated buffers");
+        spdlog::info("Successfully allocated buffers");
         Ftrace::ftrace_duration_end();
     }
     Ftrace::ftrace_duration_begin("allocat FrameBuffer");
@@ -185,12 +185,12 @@ auto main(int argc, char* argv[]) -> int
     Ftrace::ftrace_duration_begin("camera start");
     ret = camera->start();
     if (ret) {
-        std::println("Failed to start camera");
+        spdlog::error("Failed to start camera");
         Ftrace::ftrace_duration_end();
         camera->release();
         return ret;
     } else {
-        std::println("Successfully started camera");
+        spdlog::info("Successfully started camera");
         Ftrace::ftrace_duration_end();
     }
 
@@ -210,13 +210,13 @@ auto main(int argc, char* argv[]) -> int
     Ftrace::ftrace_duration_begin("camera createRequest");
     auto request = camera->createRequest();
     if (!request) {
-        std::println("Failed to create request");
+        spdlog::error("Failed to create request");
         Ftrace::ftrace_duration_end();
         camera->stop();
         camera->release();
         return -1;
     } else {
-        std::println("Successfully created request");
+        spdlog::info("Successfully created request");
         Ftrace::ftrace_duration_end();
     }
 
@@ -227,13 +227,13 @@ auto main(int argc, char* argv[]) -> int
     Ftrace::ftrace_duration_begin("camera queueRequest");
     ret = camera->queueRequest(request.get());
     if (ret) {
-        std::println("Failed to queue request");
+        spdlog::error("Failed to queue request");
         Ftrace::ftrace_duration_end();
         camera->stop();
         camera->release();
         return ret;
     } else {
-        std::println("Successfully queued request");
+        spdlog::info("Successfully queued request");
         Ftrace::ftrace_duration_end();
     }
 #endif
@@ -245,13 +245,15 @@ auto main(int argc, char* argv[]) -> int
     // 8. 释放资源
     Ftrace::ftrace_duration_begin("camera stop");
     camera->stop();
-    std::println("Successfully stoped camera");
+    spdlog::info("Successfully stoped camera");
     Ftrace::ftrace_duration_end();
 
     Ftrace::ftrace_duration_begin("camera release");
     camera->release();
-    std::println("Successfully released camera");
+    spdlog::info("Successfully released camera");
     Ftrace::ftrace_duration_end();
+
+    spdlog::info("End!");
 
     return 0;
 }
