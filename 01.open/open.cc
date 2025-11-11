@@ -1,4 +1,5 @@
 #include "ftrace.h"
+#include <chrono>
 #include <libcamera/control_ids.h>
 #include <libcamera/libcamera.h>
 #include <spdlog/spdlog.h>
@@ -6,12 +7,17 @@
 
 // sudo chmod 666 /sys/kernel/debug/tracing/trace_marker
 
+std::atomic<int> completedFrames { 0 };
+static const int totalFrames = 30;
+
 auto requestComplete(libcamera::Request* request) -> void
 {
     if (request->status() != libcamera::Request::RequestComplete) {
         spdlog::error("Request failed!");
         return;
     }
+
+    completedFrames.fetch_add(1);
 
     const libcamera::ControlList& metadata = request->metadata();
 
@@ -174,6 +180,11 @@ auto main(int argc, char* argv[]) -> int
     }
     Ftrace::ftrace_duration_begin("allocat FrameBuffer");
     const std::vector<std::unique_ptr<libcamera::FrameBuffer>>& buffers = allocator->buffers(stream);
+    if (buffers.empty()) {
+        spdlog::error("No buffers allocated for stream!");
+        camera->release();
+        return -1;
+    }
     Ftrace::ftrace_duration_end();
 
     // 5. 注册回调
@@ -196,8 +207,12 @@ auto main(int argc, char* argv[]) -> int
 
     // 7. 创建并提交 Request
     std::vector<std::unique_ptr<libcamera::Request>> requests;
-    for (int i = 0; i < 30; ++i) {
+    for (int i = 0; i < totalFrames; ++i) {
         auto request = camera->createRequest();
+        if (!request) {
+            spdlog::error("Failed to create request {}", i);
+            break;
+        }
         request->addBuffer(stream, buffers[i % buffers.size()].get());
         requests.push_back(std::move(request));
     }
@@ -206,46 +221,21 @@ auto main(int argc, char* argv[]) -> int
         camera->queueRequest(request.get());
     }
 
-#if 0
-    Ftrace::ftrace_duration_begin("camera createRequest");
-    auto request = camera->createRequest();
-    if (!request) {
-        spdlog::error("Failed to create request");
-        Ftrace::ftrace_duration_end();
-        camera->stop();
-        camera->release();
-        return -1;
-    } else {
-        spdlog::info("Successfully created request");
-        Ftrace::ftrace_duration_end();
-    }
-
-    Ftrace::ftrace_duration_begin("request addBuffer");
-    request->addBuffer(stream, buffers[0].get());
-    Ftrace::ftrace_duration_end();
-
-    Ftrace::ftrace_duration_begin("camera queueRequest");
-    ret = camera->queueRequest(request.get());
-    if (ret) {
-        spdlog::error("Failed to queue request");
-        Ftrace::ftrace_duration_end();
-        camera->stop();
-        camera->release();
-        return ret;
-    } else {
-        spdlog::info("Successfully queued request");
-        Ftrace::ftrace_duration_end();
-    }
-#endif
-
     Ftrace::ftrace_duration_begin("sleep");
-    std::this_thread::sleep_for(std::chrono::seconds(5));
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+    while (completedFrames < totalFrames) {
+        if (std::chrono::steady_clock::now() > deadline) {
+            spdlog::warn("Timeout waiting for frames, got {}/{}", completedFrames.load(), totalFrames);
+            break;
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
     Ftrace::ftrace_duration_end();
 
     // 8. 释放资源
     Ftrace::ftrace_duration_begin("camera stop");
     camera->stop();
-    spdlog::info("Successfully stoped camera");
+    spdlog::info("Successfully stopped camera");
     Ftrace::ftrace_duration_end();
 
     Ftrace::ftrace_duration_begin("camera release");
